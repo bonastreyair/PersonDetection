@@ -54,10 +54,10 @@ net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 # load the input image and construct an input blob for the image
 # by resizing to a fixed 300x300 pixels and then normalizing it
 while True:
-    client = mqtt.Client()
-    client.connect(BROKER,1883,60)
+    if GPIO.event_detected(PIR_PIN):
+        client = mqtt.client()
+        client.connect(BROKER,1883,60)
 
-    if GPIO.input(PIR_PIN) == True:
         print("Detectado")
         client.publish(TOPIC_PIR,"1")
         # (note: normalization is done via the authors of the MobileNet SSD implementation)
@@ -68,7 +68,6 @@ while True:
             image = np.empty((height, width, 3), dtype=np.uint8)
             picam.capture(image, 'bgr')
             image = cv2.flip(image, -1)
-       
 
         #image = cv2.imread(args["image"])
         (h, w) = image.shape[:2]
@@ -111,7 +110,4 @@ while True:
         cv2.imwrite("img.jpg", image)
         #cv2.imshow("Output", image)
         #cv2.waitKey(0)
-    else:
-        print("No Detectado")
         client.publish(TOPIC_PIR,"0")
-        time.sleep(1)
