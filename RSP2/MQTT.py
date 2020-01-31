@@ -114,15 +114,21 @@ while True:
     
     if GPIO.input(PIR_PIN):
         people_detections = []
+        max_people = 0
 
-        for i in range(5): # takes 5 photos
+        for i in range(4): # takes 4 photos
             image = make_photo()
-            people_detections.append(count_people(image)) 
             
-        people = max(people_detections)
+            people = count_people(image)
             
-        client.publish(TOPIC_PER, people)
-        time.sleep(30) # sleeps 30 seconds
+            if people >= max_people:
+                image_to_save = image.copy()
+                max_people = people
+                
+        cv2.imwrite("image.jpg", image_to_save)
+
+        client.publish(TOPIC_PER, max_people)
+        time.sleep(10) # sleeps 10 seconds
         continue
     
     if GPIO.wait_for_edge(PIR_PIN, GPIO.RISING, timeout=60000):
