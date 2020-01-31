@@ -15,13 +15,14 @@ import time
 import paho.mqtt.client as mqtt
 
 PIR_PIN = 17
+PORT_MQTT = 1883
 
-BROKER="10.12.13.62"
-TOPIC_PIR="RSP2/PIR/Presencia"
-TOPIC_PER="RSP2/CAM/Personas"
+BROKER = "10.12.13.62"
+TOPIC_PIR = "RSP2/PIR/Presencia"
+TOPIC_PER = "RSP2/CAM/Personas"
 
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(PIR_PIN,GPIO.IN)
+GPIO.setup(PIR_PIN, GPIO.IN)
 
 width = 1280
 height = 1280
@@ -53,61 +54,77 @@ net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 
 # load the input image and construct an input blob for the image
 # by resizing to a fixed 300x300 pixels and then normalizing it
+
+client = mqtt.client()
+client.connect(BROKER, PORT_MQTT, 60)
+
+def make_photo():
+    with picamera.PiCamera() as picam:
+        picam.resolution = (width, height)
+        picam.start_preview()
+        time.sleep(1)
+        image = np.empty((height, width, 3), dtype=np.uint8)
+        picam.capture(image, 'bgr')
+        image = cv2.flip(image, -1)
+    
+    return image
+    
+    
+def count_people(image):
+    # (note: normalization is done via the authors of the MobileNet SSD implementation)
+    #image = cv2.imread(args["image"])
+    (h, w) = image.shape[:2]
+    blob = cv2.dnn.blobFromImage(cv2.resize(image, (300, 300)), 0.007843, (300, 300), 127.5)
+    # pass the blob through the network and obtain the detections and predictions
+    print("[INFO] computing object detections...")
+    start_time = time.time()
+    net.setInput(blob)
+    detections = net.forward()
+    end_time = time.time()
+    print(f"[INFO] computing time {(end_time-start_time)*1000:3.0f}ms")
+    # loop over the detections
+    for i in np.arange(0, detections.shape[2]):
+        # extract the confidence (i.e., probability) associated with the prediction
+        confidence = detections[0, 0, i, 2]
+
+        # filter out weak detections by ensuring the `confidence` is
+        # greater than the minimum confidence
+        if confidence > args["confidence"]:
+            # extract the index of the class label from the `detections`,
+            # then compute the (x, y)-coordinates of the bounding box for the object
+            idx = int(detections[0, 0, i, 1])
+            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (startX, startY, endX, endY) = box.astype("int")
+
+            # display the prediction
+            label = "{}: {:.2f}%".format(CLASSES[idx], confidence * 100)
+            print("[INFO] {}".format(label))
+            if CLASSES[idx] == 'person':
+                people += 1
+                cv2.rectangle(image, (startX, startY), (endX, endY), COLORS[idx], 2)
+                y = startY - 15 if startY - 15 > 15 else startY + 15
+                cv2.putText(image, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
+
+    print("[INFO] Hay " + str(people) + " personas")
+
+    return people  
+
 while True:
-    if GPIO.event_detected(PIR_PIN):
-        client = mqtt.client()
-        client.connect(BROKER,1883,60)
+    client.publish(TOPIC_PIR, GPIO.input(PIR_PIN))    
+    
+    if GPIO.input(PIR_PIN):
+        people_detections = []
 
-        print("Detectado")
-        client.publish(TOPIC_PIR,"1")
-        # (note: normalization is done via the authors of the MobileNet SSD implementation)
-        with picamera.PiCamera() as picam:
-            picam.resolution = (width, height)
-            picam.start_preview()
-            time.sleep(1)
-            image = np.empty((height, width, 3), dtype=np.uint8)
-            picam.capture(image, 'bgr')
-            image = cv2.flip(image, -1)
-
-        #image = cv2.imread(args["image"])
-        (h, w) = image.shape[:2]
-        blob = cv2.dnn.blobFromImage(cv2.resize(image, (300, 300)), 0.007843, (300, 300), 127.5)
-
-        # pass the blob through the network and obtain the detections and predictions
-        print("[INFO] computing object detections...")
-        start_time = time.time()
-        net.setInput(blob)
-        detections = net.forward()
-        end_time = time.time()
-        print(f"[INFO] computing time {(end_time-start_time)*1000:3.0f}ms")
-        # loop over the detections
-        for i in np.arange(0, detections.shape[2]):
-            # extract the confidence (i.e., probability) associated with the prediction
-            confidence = detections[0, 0, i, 2]
-
-            # filter out weak detections by ensuring the `confidence` is
-            # greater than the minimum confidence
-            if confidence > args["confidence"]:
-                # extract the index of the class label from the `detections`,
-                # then compute the (x, y)-coordinates of the bounding box for the object
-                idx = int(detections[0, 0, i, 1])
-                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                (startX, startY, endX, endY) = box.astype("int")
-
-                # display the prediction
-                label = "{}: {:.2f}%".format(CLASSES[idx], confidence * 100)
-                print("[INFO] {}".format(label))
-                if CLASSES[idx] == 'person':
-                    people = people +1
-                    cv2.rectangle(image, (startX, startY), (endX, endY), COLORS[idx], 2)
-                    y = startY - 15 if startY - 15 > 15 else startY + 15
-                    cv2.putText(image, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
-                     
-        print("[INFO] Hay " + str(people) + " personas")
-        client.publish(TOPIC_PER,people)
-        people = 0
-        # show the output image
-        cv2.imwrite("img.jpg", image)
-        #cv2.imshow("Output", image)
-        #cv2.waitKey(0)
-        client.publish(TOPIC_PIR,"0")
+        for i in range(5): # takes 5 photos
+            image = make_photo()
+            people_detections.append(count_people(image)) 
+            
+        people = max(people_detections)
+            
+        client.publish(TOPIC_PER, people)
+        time.sleep(30) # sleeps 30 seconds
+        continue
+    
+    if GPIO.wait_for_edge(PIR_PIN, GPIO.RISING, timeout=60000):
+        print('movement detected!')
+       
