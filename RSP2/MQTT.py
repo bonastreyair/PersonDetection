@@ -20,13 +20,12 @@ PORT_MQTT = 1883
 BROKER = "10.12.13.62"
 TOPIC_PIR = "RSP2/PIR/Presencia"
 TOPIC_PER = "RSP2/CAM/Personas"
+TOPIC_FOTO_ON= "RSP1/CAM/ON"
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(PIR_PIN, GPIO.IN)
 
-width = 1280
-height = 1280
-people = 0
+
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 
@@ -55,10 +54,45 @@ net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 # load the input image and construct an input blob for the image
 # by resizing to a fixed 300x300 pixels and then normalizing it
 
-client = mqtt.client()
-client.connect(BROKER, PORT_MQTT, 60)
+mqttc = mqtt.Client()
+
+def on_connect(mqttc, obj, flags, rc):
+    print("rc: " + str(rc))
+    mqttc.subscribe("RSP1/FOTO/ON")
+
+def on_disconnect(mqttc, obj, flags, rc):
+    mqttc.connect(BROKER, PORT_MQTT, 60)
+    print("reconnecting...")
+def on_publish(mqttc, obj, mid):
+    print("mid: " + str(mid))
+
+def on_message(client, userdata, msg):
+    print('Mensaje recibido..Comprovando personas..')
+    image = make_photo()
+    people = count_people(image)
+    image_to_save = image.copy()
+
+    cv2.imwrite("image.jpg", image_to_save)
+
+    mqttc.publish(TOPIC_PER, people)
+    print("[INFO] Finalmente hay " + str(people) + " personas")
+
+
+mqttc.on_connect = on_connect
+mqttc.on_disconnect = on_disconnect
+mqttc.on_publish = on_publish
+mqttc.on_message = on_message
+
+mqttc.connect(BROKER, PORT_MQTT, 60)
+
+mqttc.loop_start()
+
 
 def make_photo():
+    
+    width = 1280
+    height = 1280
+
     with picamera.PiCamera() as picam:
         picam.resolution = (width, height)
         picam.start_preview()
@@ -71,6 +105,7 @@ def make_photo():
     
     
 def count_people(image):
+    person = 0
     # (note: normalization is done via the authors of the MobileNet SSD implementation)
     #image = cv2.imread(args["image"])
     (h, w) = image.shape[:2]
@@ -100,37 +135,43 @@ def count_people(image):
             label = "{}: {:.2f}%".format(CLASSES[idx], confidence * 100)
             print("[INFO] {}".format(label))
             if CLASSES[idx] == 'person':
-                people += 1
+                person += 1
                 cv2.rectangle(image, (startX, startY), (endX, endY), COLORS[idx], 2)
                 y = startY - 15 if startY - 15 > 15 else startY + 15
                 cv2.putText(image, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
 
-    print("[INFO] Hay " + str(people) + " personas")
+    print("[INFO] Ha detectado " + str(person) + " personas")
 
-    return people  
+    return person  
 
 while True:
-    client.publish(TOPIC_PIR, GPIO.input(PIR_PIN))    
-    
+    mqttc.publish(TOPIC_PIR, GPIO.input(PIR_PIN))    
+ 
     if GPIO.input(PIR_PIN):
-        people_detections = []
-        max_people = 0
-
+ 
         for i in range(4): # takes 4 photos
             image = make_photo()
-            
+ 
             people = count_people(image)
-            
-            if people >= max_people:
-                image_to_save = image.copy()
-                max_people = people
-                
+ 
+            image_to_save = image.copy()
+ 
         cv2.imwrite("image.jpg", image_to_save)
 
-        client.publish(TOPIC_PER, max_people)
+        mqttc.publish(TOPIC_PER, people)
+        print("[INFO] Finalmente hay " + str(people) + " personas")
         time.sleep(10) # sleeps 10 seconds
         continue
     
     if GPIO.wait_for_edge(PIR_PIN, GPIO.RISING, timeout=60000):
-        print('movement detected!')
-       
+        print('Movement detected!')
+    else:
+        print('No movement..Comprovando personas..')
+        image = make_photo()
+        people = count_people(image)
+        image_to_save = image.copy()
+        
+        cv2.imwrite("image.jpg", image_to_save)
+
+        mqttc.publish(TOPIC_PER, people)
+        print("[INFO] Finalmente hay " + str(people) + " personas")
