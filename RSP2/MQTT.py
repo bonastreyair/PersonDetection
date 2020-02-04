@@ -20,6 +20,7 @@ PORT_MQTT = 1883
 BROKER = "10.12.13.62"
 TOPIC_PIR = "RSP2/PIR/Presencia"
 TOPIC_PER = "RSP2/CAM/Personas"
+TOPIC_FOTO_ON= "RSP1/CAM/ON"
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(PIR_PIN, GPIO.IN)
@@ -57,6 +58,7 @@ mqttc = mqtt.Client()
 
 def on_connect(mqttc, obj, flags, rc):
     print("rc: " + str(rc))
+    mqttc.subscribe("RSP1/FOTO/ON")
 
 def on_disconnect(mqttc, obj, flags, rc):
     mqttc.connect(BROKER, PORT_MQTT, 60)
@@ -64,9 +66,22 @@ def on_disconnect(mqttc, obj, flags, rc):
 def on_publish(mqttc, obj, mid):
     print("mid: " + str(mid))
 
+def on_message(client, userdata, msg):
+    print('Mensaje recibido..Comprovando personas..')
+    image = make_photo()
+    people = count_people(image)
+    image_to_save = image.copy()
+
+    cv2.imwrite("image.jpg", image_to_save)
+
+    mqttc.publish(TOPIC_PER, people)
+    print("[INFO] Finalmente hay " + str(people) + " personas")
+
+
 mqttc.on_connect = on_connect
 mqttc.on_disconnect = on_disconnect
 mqttc.on_publish = on_publish
+mqttc.on_message = on_message
 
 mqttc.connect(BROKER, PORT_MQTT, 60)
 
