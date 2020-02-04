@@ -54,7 +54,24 @@ net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 # by resizing to a fixed 300x300 pixels and then normalizing it
 
 mqttc = mqtt.Client()
+
+def on_connect(mqttc, obj, flags, rc):
+    print("rc: " + str(rc))
+
+def on_disconnect(mqttc, obj, flags, rc):
+    mqttc.connect(BROKER, PORT_MQTT, 60)
+    print("reconnecting...")
+def on_publish(mqttc, obj, mid):
+    print("mid: " + str(mid))
+
+mqttc.on_connect = on_connect
+mqttc.on_disconnect = on_disconnect
+mqttc.on_publish = on_publish
+
 mqttc.connect(BROKER, PORT_MQTT, 60)
+
+mqttc.loop_start()
+
 
 def make_photo():
     
