@@ -1,4 +1,4 @@
-ç#!/usr&bin/env python3
+#!/usr&bin/env python3
 # USAGE
 # python3 deep_learning_object_detection.py --image images/example_01.jpg \
 #   --prototxt MobileNetSSD_deploy.prototxt.txt --model MobileNetSSD_deploy.caffemodel
@@ -114,24 +114,24 @@ def count_people(image):
 
 while True:
     mqttc.publish(TOPIC_PIR, GPIO.input(PIR_PIN))    
-    
+ 
     if GPIO.input(PIR_PIN):
-        
+ 
         for i in range(4): # takes 4 photos
             image = make_photo()
-            
+ 
             people = count_people(image)
-            
+ 
             image_to_save = image.copy()
-            
+ 
         cv2.imwrite("image.jpg", image_to_save)
 
-        mqttc.publish(TOPIC_PER, max_people)
-        print("[INFO] Finalmente hay " + str(max_people) + " personas")
+        mqttc.publish(TOPIC_PER, people)
+        print("[INFO] Finalmente hay " + str(people) + " personas")
         time.sleep(10) # sleeps 10 seconds
         continue
     
-    if GPIO.wait_for_edge(PIR_PIN, GPIO.RISING, timeout=10000):
+    if GPIO.wait_for_edge(PIR_PIN, GPIO.RISING, timeout=60000):
         print('Movement detected!')
     else:
         print('No movement..Comprovando personas..')
