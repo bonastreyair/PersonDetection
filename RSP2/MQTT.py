@@ -20,7 +20,6 @@ PORT_MQTT = 1883
 BROKER = "10.12.13.62"
 TOPIC_PIR = "RSP2/PIR/Presencia"
 TOPIC_PER = "RSP2/CAM/Personas"
-TOPIC_FOTO_ON= "RSP1/CAM/ON"
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(PIR_PIN, GPIO.IN)
@@ -58,7 +57,8 @@ mqttc = mqtt.Client()
 
 def on_connect(mqttc, obj, flags, rc):
     print("rc: " + str(rc))
-    mqttc.subscribe("RSP1/FOTO/ON")
+    mqttc.subscribe("RSP2/CAM/Foto")
+    mqttc.subscribe("RSP2/CAM/Status")
 
 def on_disconnect(mqttc, obj, flags, rc):
     mqttc.connect(BROKER, PORT_MQTT, 60)
@@ -67,16 +67,27 @@ def on_publish(mqttc, obj, mid):
     print("mid: " + str(mid))
 
 def on_message(client, userdata, msg):
-    print('Mensaje recibido..Comprovando personas..')
-    image = make_photo()
-    people = count_people(image)
-    image_to_save = image.copy()
+    print('Mensaje recibido..')
+    print("Topic message: ", msg.topic)
+    print("Received message: ", str(msg.payload.decode("utf-8")))
 
-    cv2.imwrite("image.jpg", image_to_save)
+    if (msg.topic == "RSP2/CAM/Foto"):
+        if Active:
+            image = make_photo()
+            people = count_people(image)
+            image_to_save = image.copy()
 
-    mqttc.publish(TOPIC_PER, people)
-    print("[INFO] Finalmente hay " + str(people) + " personas")
+            cv2.imwrite("image.jpg", image_to_save)
 
+            mqttc.publish(TOPIC_PER, people)
+            print("[INFO] Finalmente hay " + str(people) + " personas")
+        else:
+            print("[INFO] Camera Desactivada")
+    elif (msg.topic == "RSP2/CAM/Status"):
+        if (str(msg.payload.decode("utf-8")) == False):
+            Active = False
+        else:
+            Active = True
 
 mqttc.on_connect = on_connect
 mqttc.on_disconnect = on_disconnect
@@ -87,6 +98,7 @@ mqttc.connect(BROKER, PORT_MQTT, 60)
 
 mqttc.loop_start()
 
+Active = True
 
 def make_photo():
     
@@ -145,10 +157,10 @@ def count_people(image):
     return person  
 
 while True:
-    mqttc.publish(TOPIC_PIR, GPIO.input(PIR_PIN))    
- 
-    if GPIO.input(PIR_PIN):
- 
+   # mqttc.publish(TOPIC_PIR, GPIO.input(PIR_PIN))
+    print("[INFO] El estado de la camera es " +str(Active))
+
+    if GPIO.input(PIR_PIN) and Active == True:
         for i in range(4): # takes 4 photos
             image = make_photo()
  
@@ -163,9 +175,9 @@ while True:
         time.sleep(10) # sleeps 10 seconds
         continue
     
-    if GPIO.wait_for_edge(PIR_PIN, GPIO.RISING, timeout=60000):
+    if GPIO.wait_for_edge(PIR_PIN, GPIO.RISING, timeout=60000) and Active == True :
         print('Movement detected!')
-    else:
+    elif Active == True:
         print('No movement..Comprovando personas..')
         image = make_photo()
         people = count_people(image)
