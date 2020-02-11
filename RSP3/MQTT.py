@@ -56,9 +56,9 @@ while True:
         
     if GPIO.input(PIR_PIN):
         print("Detectando")
-        client.publish(TOPIC_PIR, "1")
+        mqttc.publish(TOPIC_PIR, "1")
     else:
         print("No Detectando")
-        client.publish(TOPIC_PIR, "0")
+        mqttc.publish(TOPIC_PIR, "0")
         
     time.sleep(1)
