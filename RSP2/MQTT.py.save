@@ -70,8 +70,8 @@ def on_publish(mqttc, obj, mid):
 def on_message(client, userdata, msg):
     print('Mensaje recibido..')
     print("Topic message: ", msg.topic)
-    print("msg.payload: ", str(msg.payload))
-    if (msg.topic == "RSP2/CAM/Foto"):
+    print("Received message: ", type(msg.payload))
+      if (msg.topic == "RSP2/CAM/Foto"):
         if Active:
             image = make_photo()
             people = count_people(image)
@@ -84,13 +84,14 @@ def on_message(client, userdata, msg):
         else:
             print("[INFO] Camera Desactivada")
     elif (msg.topic == "RSP2/CAM/Status"):
-        if msg.payload == b'OFF':
-            print("Active = False")
+        print ("[INFO]" + msg.payload)
+        if msg.payload =="0":
+            print("msg.payload = 0")
             Active = False
         else:
-            print ("Active = True")
+            print ("msg.payload = error")
             Active = True
-
+        return Active
 
 mqttc.on_connect = on_connect
 mqttc.on_disconnect = on_disconnect
