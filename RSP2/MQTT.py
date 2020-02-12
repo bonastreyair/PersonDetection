@@ -154,7 +154,7 @@ while True:
         cv2.imwrite("image.jpg", image_to_save)
 
         mqttc.publish(TOPIC_PER, people)
-        print("[INFO] Finally there are " + str(people) + " persons")
+        print("[INFO] Finally there are {} persons".format(people))
         time.sleep(10) # sleeps 10 seconds
         continue
     
